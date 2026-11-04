@@ -1,8 +1,15 @@
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/agent_action.dart';
+
+/// Debug-only logging: screen dumps and API bodies must never reach
+/// logcat in a release build.
+void _dbgLog(String message) {
+  if (kDebugMode) developer.log(message, name: 'AiService');
+}
 
 class AiResponse {
   final String content;
@@ -247,10 +254,7 @@ Answer questions, explain concepts, brainstorm, write emails/messages, and chat 
         'max_tokens': _effectiveMaxTokens,
       });
 
-      developer.log(
-        'API Request: $requestUrl\n$requestBody',
-        name: 'AiService',
-      );
+      _dbgLog('API Request: $requestUrl\n$requestBody');
 
       final response = await http
           .post(
@@ -265,10 +269,7 @@ Answer questions, explain concepts, brainstorm, write emails/messages, and chat 
           )
           .timeout(const Duration(minutes: 30));
 
-      developer.log(
-        'API Response [${response.statusCode}]: ${response.body}',
-        name: 'AiService',
-      );
+      _dbgLog('API Response [${response.statusCode}]: ${response.body}');
 
       if (response.statusCode != 200) {
         String errorMessage = response.body;
@@ -558,10 +559,7 @@ Answer questions, explain concepts, brainstorm, write emails/messages, and chat 
           throw Exception('Network error after $maxRetries retries: $e');
         }
         int delaySeconds = 3 * currentTry;
-        developer.log(
-          'API call failed ($e), retrying $currentTry/$maxRetries in $delaySeconds seconds...',
-          name: 'PrivateAgent',
-        );
+        _dbgLog('API call failed ($e), retrying $currentTry/$maxRetries in $delaySeconds seconds...');
         await Future.delayed(Duration(seconds: delaySeconds));
       }
     }
