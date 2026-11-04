@@ -1,6 +1,13 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:developer' as developer;
+
+/// Debug-only logging: screen dumps and API bodies must never reach
+/// logcat in a release build.
+void _dbgLog(String message) {
+  if (kDebugMode) developer.log(message, name: 'ScreenAutomation');
+}
 
 /// Dart bridge to the native AccessibilityService.
 /// Provides screen reading, UI element interaction, and gesture control.
@@ -24,14 +31,14 @@ class ScreenAutomationService {
     try {
       return await _invoke<bool>('ping') ?? false;
     } catch (e) {
-      developer.log('Accessibility channel readiness check failed: $e',
-          name: 'PrivateAgent');
+      _dbgLog('Accessibility channel readiness check failed: $e');
       return false;
     }
   }
 
   /// Log a message to Android's native Log system
   static Future<void> logToNative(String message) async {
+    if (!kDebugMode) return;
     try {
       await _invoke<bool>('logToNative', {'message': message});
     } catch (_) {}
@@ -232,7 +239,7 @@ class ScreenAutomationService {
     }
 
     final screenString = buffer.toString();
-    developer.log('Screen Dump Extracted:\n$screenString', name: 'ScreenAutomation');
+    _dbgLog('Screen Dump Extracted:\n$screenString');
     return screenString;
   }
 
