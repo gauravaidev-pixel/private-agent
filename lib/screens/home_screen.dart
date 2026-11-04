@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/chat_message.dart';
 import '../services/ai_service.dart';
@@ -161,7 +162,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           action,
           aiService: _aiService,
           onProgress: (msg) {
-            developer.log('Task progress: $msg', name: 'PrivateAgent');
+            if (kDebugMode) {
+              developer.log('Task progress: $msg', name: 'PrivateAgent');
+            }
             _sendOverlayEvent('OVERLAY_PROGRESS', msg);
             if (mounted) {
               setState(() {
