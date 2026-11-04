@@ -117,16 +117,16 @@ class AgentAccessibilityService : AccessibilityService() {
 
     private fun isSensitiveNode(node: AccessibilityNodeInfo): Boolean {
         if (node.isPassword) return true
-        val id = (node.viewIdResourceName ?: "").lowercase()
-        val cls = (node.className ?: "").lowercase()
-        val hint = (node.hintText?.toString() ?: "").lowercase()
+        val id = (node.viewIdResourceName ?: "").toString().lowercase()
+        val cls = (node.className ?: "").toString().lowercase()
+        val hint = (node.hintText?.toString() ?: "").toString().lowercase()
         return sensitiveMarkers.any {
             id.contains(it) || cls.contains(it) || hint.contains(it)
         }
     }
 
     private fun roleOf(node: AccessibilityNodeInfo, className: String): String {
-        val cls = className.lowercase()
+        val cls = className.toString().lowercase()
         return when {
             node.isEditable -> "input"
             node.isCheckable -> "checkbox"
