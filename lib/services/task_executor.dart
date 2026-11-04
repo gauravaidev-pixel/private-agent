@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
@@ -10,6 +11,12 @@ import 'shizuku_service.dart';
 import 'skill_memory_service.dart';
 import 'recovery_engine.dart';
 import '../models/saved_skill.dart';
+
+/// Debug-only logging: screen dumps and API bodies must never reach
+/// logcat in a release build.
+void _dbgLog(String message) {
+  if (kDebugMode) developer.log(message, name: 'PrivateAgent');
+}
 
 /// Executes multi-step UI automation tasks using LLM-guided screen reading.
 ///
@@ -245,10 +252,7 @@ Rules:
       final screenContent = _aiService.useScreenCompression
           ? await _screenService.getCompressedScreenDescription(userGoal)
           : await _screenService.getScreenDescription();
-      developer.log(
-        '=== SCREEN DUMP (Step ${step + 1}) ===\n$screenContent',
-        name: 'PrivateAgent',
-      );
+      _dbgLog('=== SCREEN DUMP (Step ${step + 1}) ===\n$screenContent');
 
       // Determine previous result string
       final prevResultStr = step > 0 && results.isNotEmpty
@@ -270,7 +274,7 @@ CURRENT SCREEN TEXT DUMP:
 $screenContent$prevResultStr$failureHint
 Step ${step + 1}/${_aiService.maxSteps}. Look at the text dump and coordinates. What is the next action?''';
 
-      developer.log('=== AI PROMPT ===\n$prompt', name: 'PrivateAgent');
+      _dbgLog('=== AI PROMPT ===\n$prompt');
 
       // 3. Get AI response — races against cancel signal so Stop works immediately
       String response;
@@ -306,10 +310,7 @@ Step ${step + 1}/${_aiService.maxSteps}. Look at the text dump and coordinates. 
         response = aiResponse.content;
         totalTokens += aiResponse.totalTokens;
 
-        developer.log(
-          '=== RAW AI RESPONSE ===\n$response',
-          name: 'PrivateAgent',
-        );
+        _dbgLog('=== RAW AI RESPONSE ===\n$response');
       } catch (e) {
         if (_cancelled) {
           results.add('Task cancelled by user.');
@@ -377,10 +378,7 @@ Step ${step + 1}/${_aiService.maxSteps}. Look at the text dump and coordinates. 
         parsedJsonStr = jsonStr;
       } catch (firstError) {
         // First attempt failed — retry once
-        developer.log(
-          '=== JSON PARSE FAILED, RETRYING ===\nError: $firstError\nRaw: $response',
-          name: 'PrivateAgent',
-        );
+        _dbgLog('=== JSON PARSE FAILED, RETRYING ===\nError: $firstError\nRaw: $response');
         _report('Retrying step ${step + 1}...\n(Failed to parse: $firstError)');
         // Wait 2 seconds before retrying to prevent rate-limit spam
         await Future.delayed(const Duration(seconds: 2));
@@ -390,10 +388,7 @@ Step ${step + 1}/${_aiService.maxSteps}. Look at the text dump and coordinates. 
             prompt,
           );
           totalTokens += retryResponse.totalTokens;
-          developer.log(
-            '=== RETRY AI RESPONSE ===\n${retryResponse.content}',
-            name: 'PrivateAgent',
-          );
+          _dbgLog('=== RETRY AI RESPONSE ===\n${retryResponse.content}');
 
           String jsonStr = _extractJson(retryResponse.content);
           actionJson = jsonDecode(jsonStr) as Map<String, dynamic>;
@@ -426,10 +421,7 @@ Step ${step + 1}/${_aiService.maxSteps}. Look at the text dump and coordinates. 
       final reasoning = actionJson['reasoning'] as String? ?? '';
       final isComplete = actionJson['is_complete'] == true;
 
-      developer.log(
-        '=== PARSED ACTION ===\nAction: $action\nParams: $params\nReasoning: $reasoning\nIs Complete: $isComplete',
-        name: 'PrivateAgent',
-      );
+      _dbgLog('=== PARSED ACTION ===\nAction: $action\nParams: $params\nReasoning: $reasoning\nIs Complete: $isComplete');
 
       _report('Step ${step + 1}: $reasoning');
 
@@ -537,10 +529,7 @@ Step ${step + 1}/${_aiService.maxSteps}. Look at the text dump and coordinates. 
           actionResult = 'Unknown action: $action';
       }
 
-      developer.log(
-        '=== NATIVE EXECUTION RESULT ===\n$actionResult',
-        name: 'PrivateAgent',
-      );
+      _dbgLog('=== NATIVE EXECUTION RESULT ===\n$actionResult');
 
       // Track consecutive failures to detect stuck loops
       if (!success) {
@@ -794,10 +783,7 @@ Step ${step + 1}/${_aiService.maxSteps}. Look at the text dump and coordinates. 
       }
 
       results.add('Memory Replay Step ${i + 1}: $actionResult');
-      developer.log(
-        '=== MEMORY REPLAY RESULT ===\n$actionResult',
-        name: 'PrivateAgent',
-      );
+      _dbgLog('=== MEMORY REPLAY RESULT ===\n$actionResult');
 
       if (!success) {
         return false; // Break out of replay if a step fails
