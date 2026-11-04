@@ -34,8 +34,43 @@ class ShizukuService {
     }
   }
 
+  /// Shell commands the agent is allowed to run.
+  ///
+  /// The LLM decides these strings, and screen text can try to steer it, so
+  /// anything outside this list is refused instead of executed.
+  static const List<String> allowedCommandPrefixes = [
+    'svc wifi',
+    'svc data',
+    'svc bluetooth',
+    'cmd bluetooth_manager',
+    'cmd media_session',
+    'am force-stop',
+    'am start',
+    'input keyevent',
+    'input tap',
+    'input swipe',
+    'input text',
+    'settings get',
+    'settings put',
+    'dumpsys',
+    'wm size',
+    'wm density',
+    'media volume',
+    'getprop',
+    'pidof',
+  ];
+
+  static bool isAllowed(String command) {
+    final c = command.trim().toLowerCase();
+    if (c.isEmpty) return false;
+    return allowedCommandPrefixes.any(c.startsWith);
+  }
+
   /// Run an ADB shell command via Shizuku
   Future<String> runCommand(String command) async {
+    if (!isAllowed(command)) {
+      return 'Blocked: "$command" is not in the Shizuku command allowlist.';
+    }
     if (!_isAvailable) {
       return 'Shizuku is not running. Please start Shizuku first.';
     }
