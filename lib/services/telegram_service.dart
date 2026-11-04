@@ -15,6 +15,11 @@ class TelegramService {
   bool _isPolling = false;
   Timer? _pollingTimer;
 
+  /// Only this chat may command the phone. Set on first use, editable by
+  /// clearing `telegram_owner_chat_id` from settings.
+  String _ownerChatId = '';
+  final List<DateTime> _recentCommands = [];
+
   TelegramService(this._actionHandler, this._aiService);
 
   String get botToken => _botToken;
@@ -24,6 +29,7 @@ class TelegramService {
     final prefs = await SharedPreferences.getInstance();
     _botToken = prefs.getString('telegram_bot_token') ?? '';
     _isEnabled = prefs.getBool('telegram_enabled') ?? false;
+    _ownerChatId = prefs.getString('telegram_owner_chat_id') ?? '';
 
     if (_isEnabled && _botToken.isNotEmpty) {
       startPolling();
@@ -96,7 +102,48 @@ class TelegramService {
     }
   }
 
+  bool _isRateLimited() {
+    final now = DateTime.now();
+    _recentCommands.removeWhere(
+      (t) => now.difference(t) > const Duration(minutes: 1),
+    );
+    if (_recentCommands.length >= 10) return true;
+    _recentCommands.add(now);
+    return false;
+  }
+
   Future<void> _handleIncomingMessage(String chatId, String text) async {
+    // Owner-only. A leaked bot handle must never become remote control of
+    // this phone: the first chat to talk to the bot claims ownership, every
+    // other chat is refused.
+    if (_ownerChatId.isEmpty) {
+      _ownerChatId = chatId;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('telegram_owner_chat_id', _ownerChatId);
+      await _sendMessage(
+        chatId,
+        '🔒 This chat is now the only one allowed to control this phone.',
+      );
+    } else if (chatId != _ownerChatId) {
+      await _sendMessage(chatId, '⛔ Unauthorized chat.');
+      return;
+    }
+
+    final trimmed = text.trim();
+    if (trimmed.toLowerCase() == '/stop') {
+      _actionHandler.cancelTask();
+      await _sendMessage(chatId, '🛑 Stop requested.');
+      return;
+    }
+    if (trimmed.toLowerCase() == '/whoami') {
+      await _sendMessage(chatId, 'Owner chat id: $_ownerChatId');
+      return;
+    }
+    if (_isRateLimited()) {
+      await _sendMessage(chatId, '⏳ Too many commands, wait a minute.');
+      return;
+    }
+
     // Acknowledge receipt
     await _sendMessage(chatId, '🤖 Received: "$text". Working on it...');
 
