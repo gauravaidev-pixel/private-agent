@@ -90,7 +90,7 @@ class AgentAccessibilityService : AccessibilityService() {
         if (allWindows == null || allWindows.isEmpty()) {
             val root = rootInActiveWindow ?: return emptyList()
             if (root.packageName?.toString() != ownPackageName) {
-                traverseNode(root, nodes, 0)
+                traverseNode(root, nodes, 0, AccessibilityWindowInfo.TYPE_APPLICATION)
             }
             root.recycle()
             return nodes
@@ -102,46 +102,89 @@ class AgentAccessibilityService : AccessibilityService() {
                 root.recycle()
                 continue
             }
-            traverseNode(root, nodes, 0)
+            traverseNode(root, nodes, 0, window.type)
             root.recycle()
         }
         return nodes
     }
 
+    /** Hard cap so one dense screen cannot blow up the prompt. */
+    private val maxDumpNodes = 200
+
+    /** Words that mark a field as secret; such values never leave the device. */
+    private val sensitiveMarkers =
+        listOf("otp", "passcode", "password", "pin", "cvv", "secret", "authcode")
+
+    private fun isSensitiveNode(node: AccessibilityNodeInfo): Boolean {
+        if (node.isPassword) return true
+        val id = (node.viewIdResourceName ?: "").lowercase()
+        val cls = (node.className ?: "").lowercase()
+        val hint = (node.hintText?.toString() ?: "").lowercase()
+        return sensitiveMarkers.any {
+            id.contains(it) || cls.contains(it) || hint.contains(it)
+        }
+    }
+
+    private fun roleOf(node: AccessibilityNodeInfo, className: String): String {
+        val cls = className.lowercase()
+        return when {
+            node.isEditable -> "input"
+            node.isCheckable -> "checkbox"
+            cls.contains("switch") || cls.contains("toggle") -> "switch"
+            cls.contains("button") -> "button"
+            cls.contains("tab") -> "tab"
+            cls.contains("image") -> "image"
+            node.isScrollable -> "list"
+            node.isClickable -> "button"
+            else -> "text"
+        }
+    }
+
     private fun traverseNode(
         node: AccessibilityNodeInfo,
         nodes: MutableList<Map<String, Any?>>,
-        depth: Int
+        depth: Int,
+        windowType: Int = AccessibilityWindowInfo.TYPE_APPLICATION
     ) {
+        if (nodes.size >= maxDumpNodes) return
+
         val rect = Rect()
         node.getBoundsInScreen(rect)
 
-        val text = node.text?.toString() ?: ""
+        val rawText = node.text?.toString() ?: ""
         val contentDesc = node.contentDescription?.toString() ?: ""
+        val hintText = node.hintText?.toString() ?: ""
         val className = node.className?.toString() ?: ""
         val viewId = node.viewIdResourceName ?: ""
+
+        // Never let passwords, PINs or OTPs leave the device.
+        val isSensitive = isSensitiveNode(node)
+        val text = if (isSensitive) "[redacted]" else rawText
+        val description = if (isSensitive) "" else contentDesc
 
         // Filter out completely hidden or zero-size nodes (like scrolled-out WebView elements)
         val isZeroSize = rect.width() <= 0 || rect.height() <= 0
         if (!node.isVisibleToUser || isZeroSize) {
             for (i in 0 until node.childCount) {
                 val child = node.getChild(i) ?: continue
-                traverseNode(child, nodes, depth + 1)
+                traverseNode(child, nodes, depth + 1, windowType)
                 child.recycle()
             }
             return
         }
 
         // Only include nodes that have text/description or are interactive
-        if (text.isNotEmpty() || contentDesc.isNotEmpty() ||
+        if (text.isNotEmpty() || description.isNotEmpty() ||
             node.isClickable || node.isEditable || node.isScrollable
         ) {
             nodes.add(
                 mapOf(
                     "index" to nodes.size,
                     "text" to text,
-                    "contentDescription" to contentDesc,
+                    "contentDescription" to description,
+                    "hintText" to (if (isSensitive) "" else hintText),
                     "className" to className.substringAfterLast('.'),
+                    "role" to roleOf(node, className),
                     "viewId" to viewId,
                     "isClickable" to node.isClickable,
                     "isEditable" to node.isEditable,
@@ -149,6 +192,10 @@ class AgentAccessibilityService : AccessibilityService() {
                     "isCheckable" to node.isCheckable,
                     "isChecked" to node.isChecked,
                     "isFocused" to node.isFocused,
+                    "isEnabled" to node.isEnabled,
+                    "isSelected" to node.isSelected,
+                    "isPassword" to isSensitive,
+                    "windowType" to windowType,
                     "bounds" to mapOf(
                         "left" to rect.left,
                         "top" to rect.top,
@@ -162,7 +209,7 @@ class AgentAccessibilityService : AccessibilityService() {
 
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            traverseNode(child, nodes, depth + 1)
+            traverseNode(child, nodes, depth + 1, windowType)
             child.recycle()
         }
     }
