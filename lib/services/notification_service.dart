@@ -1,4 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+import 'voice_service.dart';
 
 class NotificationService {
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
@@ -38,16 +42,20 @@ class NotificationService {
     if (!_initialized) await init();
     if (!await requestPermission()) return;
 
+    // A dedicated channel: Android channels are immutable once created, so a
+    // louder profile needs a new id.
     final AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
-          'task_completion_channel',
-          'Task Completions',
-          channelDescription: 'Notifications for when a task completes',
+          'task_alerts_v2',
+          'Task Alerts',
+          channelDescription: 'Audible alerts when an agent task finishes',
           importance: Importance.max,
           priority: Priority.high,
           playSound: true,
           enableVibration: true,
-          category: AndroidNotificationCategory.status,
+          vibrationPattern: Int64List.fromList(<int>[0, 400, 200, 400]),
+          category: AndroidNotificationCategory.alarm,
+          visibility: NotificationVisibility.public,
           styleInformation: BigTextStyleInformation(body),
         );
 
@@ -61,5 +69,8 @@ class NotificationService {
       body,
       platformChannelSpecifics,
     );
+
+    // Speak the result as well, so a finished task is heard and not just seen.
+    await SpeechFeedback.instance.announce(title, body);
   }
 }
